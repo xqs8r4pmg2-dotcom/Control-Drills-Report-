@@ -146,10 +146,21 @@ header{
 .btn-row{ display:flex; gap:10px; }
 .btn-row .btn{ flex:1; }
 
+/* ---- seletor de mês próprio (o campo nativo segue o idioma do aparelho) ---- */
+.month-nav{ display:flex; align-items:center; gap:8px; margin-bottom: 6px; }
+.month-nav button{
+  flex:none; width:52px; height:48px; background: var(--panel); border:1px solid var(--line);
+  color: var(--text); border-radius: 8px; font-size: 18px; cursor:pointer;
+}
+.month-nav .m-label{
+  flex:1; text-align:center; font-family:'Oswald','Noto Sans JP',sans-serif;
+  font-size: 18px; font-weight:600; letter-spacing: 0.5px;
+}
+.month-nav.light button{ background:#fff; border-color:#999; color:#000; }
+.month-nav.light .m-label{ color:#000; }
+.list-count{ display:block; text-align:center; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
 /* ---- lista ---- */
-.list-head{ display:flex; align-items:flex-end; gap:10px; margin-bottom: 10px; }
-.list-head .field{ margin:0; flex:1; }
-.list-count{ font-size: 12px; color: var(--muted); padding-bottom: 12px; white-space:nowrap; }
 .day-title{
   font-size: 12px; color: var(--teal); font-weight:700; letter-spacing: 0.5px;
   margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 1px dashed var(--line);
@@ -333,13 +344,12 @@ body.printing #reportArea{ display:block; }
   </div>
 
   <!-- lista do mês -->
-  <div class="list-head">
-    <div class="field">
-      <label for="listMonth" data-i18n="listMonth">Mês</label>
-      <input type="month" id="listMonth">
-    </div>
-    <span class="list-count" id="listCount"></span>
+  <div class="month-nav">
+    <button id="listPrev" aria-label="◀">◀</button>
+    <span class="m-label" id="listMonthLabel"></span>
+    <button id="listNext" aria-label="▶">▶</button>
   </div>
+  <span class="list-count" id="listCount"></span>
   <div id="entryList"></div>
 
   <!-- configurações -->
@@ -422,9 +432,10 @@ body.printing #reportArea{ display:block; }
     <button class="r-print" id="rPrint" data-i18n="rPrint">Imprimir / Salvar PDF</button>
     <button class="r-close" id="rClose" data-i18n="rClose">✕ Fechar</button>
   </div>
-  <div class="report-month no-print">
-    <span data-i18n="listMonth">Mês</span>
-    <input type="month" id="reportMonth">
+  <div class="month-nav light no-print">
+    <button id="repPrev" aria-label="◀">◀</button>
+    <span class="m-label" id="reportMonthLabel"></span>
+    <button id="repNext" aria-label="▶">▶</button>
   </div>
   <div id="reportSheets"></div>
 </div>
@@ -432,7 +443,7 @@ body.printing #reportArea{ display:block; }
 <script>
 /* ================= constantes ================= */
 const APP_ID = 'condicoes-6gr';
-const APP_VERSION = 'v2026.11.1';
+const APP_VERSION = 'v2026.11.2';
 const ROWS_PER_SHEET = 30;
 const BACKUP_WARN_DAYS = 7;
 // chaves próprias deste app (o app de ferramentas usa outras chaves no mesmo endereço)
@@ -558,6 +569,18 @@ let formPerson = null;
 let editingId = null;
 let editMachines = [];
 let editPerson = null;
+let listMonth = '';    // 'YYYY-MM'
+let reportMonth = '';
+
+function shiftMonth(key, delta){
+  const [y, m] = key.split('-').map(Number);
+  return localMonthKey(new Date(y, m - 1 + delta, 1));
+}
+function monthLabel(key){
+  const [y, m] = key.split('-').map(Number);
+  if(lang === 'ja') return `${y}年${m}月`;
+  return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+}
 
 const t = () => I18N[lang];
 const $ = (id) => document.getElementById(id);
@@ -757,7 +780,7 @@ $('btnSave').addEventListener('click', () => {
   $('fContent').value = '';
   dtCustomOn = false;
   updateDtToggle();
-  $('listMonth').value = localMonthKey(date);
+  listMonth = localMonthKey(date);
   renderAll();
   toast(t().saved);
 });
@@ -765,7 +788,8 @@ $('btnSave').addEventListener('click', () => {
 /* ================= lista ================= */
 function renderList(){
   const d = t();
-  const month = $('listMonth').value || localMonthKey(new Date());
+  const month = listMonth;
+  $('listMonthLabel').textContent = monthLabel(month);
   const list = entries.filter(e => localMonthKey(new Date(e.date)) === month)
     .sort((a,b) => new Date(b.date) - new Date(a.date));
   $('listCount').textContent = d.listCount(list.length);
@@ -808,7 +832,8 @@ function renderList(){
     renderAll();
   }));
 }
-$('listMonth').addEventListener('change', renderList);
+$('listPrev').addEventListener('click', () => { listMonth = shiftMonth(listMonth, -1); renderList(); });
+$('listNext').addEventListener('click', () => { listMonth = shiftMonth(listMonth, 1); renderList(); });
 
 /* ================= editar ================= */
 function renderEditToggles(){
@@ -953,7 +978,8 @@ function shortMachine(name){
   return s || name;
 }
 function buildReport(){
-  const month = $('reportMonth').value || localMonthKey(new Date());
+  const month = reportMonth;
+  $('reportMonthLabel').textContent = monthLabel(month);
   const [y, m] = month.split('-').map(Number);
   const list = entries.filter(e => localMonthKey(new Date(e.date)) === month)
     .sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -1014,12 +1040,13 @@ function buildReport(){
   $('reportSheets').innerHTML = html;
 }
 $('btnReport').addEventListener('click', () => {
-  $('reportMonth').value = $('listMonth').value || localMonthKey(new Date());
+  reportMonth = listMonth;
   buildReport();
   document.body.classList.add('printing');
   window.scrollTo(0, 0);
 });
-$('reportMonth').addEventListener('change', buildReport);
+$('repPrev').addEventListener('click', () => { reportMonth = shiftMonth(reportMonth, -1); buildReport(); });
+$('repNext').addEventListener('click', () => { reportMonth = shiftMonth(reportMonth, 1); buildReport(); });
 $('rPrint').addEventListener('click', () => window.print());
 $('rClose').addEventListener('click', () => { document.body.classList.remove('printing'); window.scrollTo(0, 0); });
 
@@ -1033,10 +1060,12 @@ function renderAll(){
   renderList();
   renderSettings();
   renderBackupStatus();
+  if(document.body.classList.contains('printing')) buildReport();
 }
 
 load();
-$('listMonth').value = localMonthKey(new Date());
+listMonth = localMonthKey(new Date());
+reportMonth = listMonth;
 applyLang();
 </script>
 </body>
